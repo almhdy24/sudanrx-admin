@@ -26,6 +26,15 @@ export default function Sidebar({ visible }) {
         </li>
       </ul>
 
+      <p className="menu-label">Administration</p>
+      <ul className="menu-list">
+        <li>
+          <NavLink to="/users" className={({ isActive }) => isActive ? 'is-active' : ''}>
+            <span className="icon"><i className="fas fa-users"></i></span> Users
+          </NavLink>
+        </li>
+      </ul>
+
       <p className="menu-label">Tools</p>
       <ul className="menu-list">
         <li>
