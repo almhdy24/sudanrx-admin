@@ -1,0 +1,23 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1976D2"/>
+      <stop offset="100%" stop-color="#0D47A1"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="20" flood-opacity="0.20"/>
+    </filter>
+  </defs>
+  <circle cx="512" cy="512" r="460" fill="url(#bg)" filter="url(#shadow)"/>
+  <path d="M260 340 C340 300,420 300,512 350 C604 300,684 300,764 340 L764 720 C684 680,604 680,512 730 C420 680,340 680,260 720 Z" fill="#FFFFFF" opacity="0.96"/>
+  <line x1="512" y1="350" x2="512" y2="730" stroke="#D6E4F0" stroke-width="10"/>
+  <g fill="#1565C0">
+    <path d="M410 420 H500 C560 420 600 455 600 510 C600 555 570 585 525 595 L610 690 H545 L470 605 H450 V690 H410 Z M450 455 V570 H500 C535 570 560 545 560 512 C560 478 535 455 500 455 Z"/>
+  </g>
+  <g fill="none" stroke="#00C853" stroke-width="34" stroke-linecap="round">
+    <line x1="590" y1="450" x2="700" y2="690"/>
+    <line x1="700" y1="450" x2="590" y2="690"/>
+  </g>
+  <circle cx="760" cy="285" r="70" fill="#00C853"/>
+  <path d="M760 240 L772 270 L805 272 L779 292 L788 324 L760 306 L732 324 L741 292 L715 272 L748 270 Z" fill="#FFFFFF"/>
+</svg>
