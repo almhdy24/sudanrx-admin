@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';  // added
 import { fetchGuidelines, createGuideline, updateGuideline, deleteGuideline } from '../services/guidelineService';
 import { fetchCategories } from '../services/categoryService';
 import GuidelineForm from '../components/ui/GuidelineForm';
@@ -19,10 +20,8 @@ export default function Guidelines() {
   const [selectedGuidelineId, setSelectedGuidelineId] = useState(null);
   const { profile, session } = useAuth();
 
-  // Pagination state
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   const loadGuidelines = async () => {
@@ -52,11 +51,7 @@ export default function Guidelines() {
   };
 
   useEffect(() => { loadCategories(); }, []);
-  useEffect(() => {
-    setPage(1); // reset to first page when search/filter changes
-    // loadGuidelines will be triggered by the next effect (or we call it here)
-  }, [search, filterCat]);
-
+  useEffect(() => { setPage(1); }, [search, filterCat]);
   useEffect(() => { loadGuidelines(); }, [page, search, filterCat]);
 
   const openCreate = () => {
@@ -119,7 +114,6 @@ export default function Guidelines() {
     }
   };
 
-  // Pagination helpers
   const goToPage = (p) => {
     if (p >= 1 && p <= totalPages) setPage(p);
   };
@@ -216,6 +210,10 @@ export default function Guidelines() {
                     </td>
                     <td>
                       <div className="buttons">
+                        <Link to={`/guidelines/${g.id}`} className="button is-small is-primary">
+                          <span className="icon"><i className="fas fa-eye"></i></span>
+                          <span>View</span>
+                        </Link>
                         {canWrite(profile?.role) && (
                           <>
                             <button className="button is-info is-small" onClick={() => openEdit(g)}>
@@ -251,6 +249,10 @@ export default function Guidelines() {
                   </p>
                   <p><strong>Sections:</strong> {g.sections?.length || 0}</p>
                   <div className="buttons mt-3">
+                    <Link to={`/guidelines/${g.id}`} className="button is-small is-primary">
+                      <span className="icon"><i className="fas fa-eye"></i></span>
+                      <span>View</span>
+                    </Link>
                     {canWrite(profile?.role) && (
                       <>
                         <button className="button is-info is-small" onClick={() => openEdit(g)}>
@@ -270,23 +272,19 @@ export default function Guidelines() {
             ))}
           </div>
 
-          {/* Pagination controls */}
+          {/* Pagination */}
           {totalPages > 1 && (
             <nav className="pagination is-centered mt-4" role="navigation" aria-label="pagination">
               <button
                 className="pagination-previous"
                 disabled={page <= 1}
                 onClick={() => goToPage(page - 1)}
-              >
-                Previous
-              </button>
+              >Previous</button>
               <button
                 className="pagination-next"
                 disabled={page >= totalPages}
                 onClick={() => goToPage(page + 1)}
-              >
-                Next
-              </button>
+              >Next</button>
               <ul className="pagination-list">
                 {renderPageNumbers()}
               </ul>

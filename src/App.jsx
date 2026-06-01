@@ -6,14 +6,14 @@ import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
 import Categories from './pages/Categories';
 import Guidelines from './pages/Guidelines';
-import Tools from './pages/Tools';    // new
+import GuidelineView from './pages/GuidelineView';  // new
+import Tools from './pages/Tools';
 import Sync from './pages/Sync';
 import Navbar from './components/layout/Navbar';
 import Sidebar from './components/layout/Sidebar';
 
 function Layout() {
   const [sidebarVisible, setSidebarVisible] = useState(false);
-
   const toggleSidebar = () => setSidebarVisible(!sidebarVisible);
 
   return (
@@ -30,7 +30,8 @@ function Layout() {
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="categories" element={<Categories />} />
               <Route path="guidelines" element={<Guidelines />} />
-              <Route path="tools" element={<Tools />} />   {/* new */}
+              <Route path="guidelines/:id" element={<GuidelineView />} />  {/* new */}
+              <Route path="tools" element={<Tools />} />
               <Route path="sync" element={<Sync />} />
             </Routes>
           </section>
