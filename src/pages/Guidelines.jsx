@@ -6,6 +6,7 @@ import VersionsModal from '../components/ui/VersionsModal';
 import { useAuth } from '../hooks/useAuth';
 
 const canWrite = (role) => role === 'contributor' || role === 'admin' || role === 'editor';
+const PAGE_SIZE = 10;
 
 export default function Guidelines() {
   const [guidelines, setGuidelines] = useState([]);
@@ -15,14 +16,26 @@ export default function Guidelines() {
   const [filterCat, setFilterCat] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editData, setEditData] = useState(null);
-  const [selectedGuidelineId, setSelectedGuidelineId] = useState(null); // for version history modal
+  const [selectedGuidelineId, setSelectedGuidelineId] = useState(null);
   const { profile, session } = useAuth();
+
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   const loadGuidelines = async () => {
     setLoading(true);
     try {
-      const data = await fetchGuidelines({ search, categoryId: filterCat || undefined });
+      const { data, count } = await fetchGuidelines({
+        search,
+        categoryId: filterCat || undefined,
+        page,
+        pageSize: PAGE_SIZE,
+      });
       setGuidelines(data);
+      setTotalCount(count);
     } catch (err) {
       console.error(err);
     } finally {
@@ -39,7 +52,12 @@ export default function Guidelines() {
   };
 
   useEffect(() => { loadCategories(); }, []);
-  useEffect(() => { loadGuidelines(); }, [search, filterCat]);
+  useEffect(() => {
+    setPage(1); // reset to first page when search/filter changes
+    // loadGuidelines will be triggered by the next effect (or we call it here)
+  }, [search, filterCat]);
+
+  useEffect(() => { loadGuidelines(); }, [page, search, filterCat]);
 
   const openCreate = () => {
     if (!canWrite(profile?.role)) return;
@@ -49,7 +67,18 @@ export default function Guidelines() {
 
   const openEdit = (guideline) => {
     if (!canWrite(profile?.role)) return;
-    setEditData(guideline);
+    const cleanGuideline = {
+      id: guideline.id,
+      title: guideline.title || '',
+      category_id: guideline.category_id || '',
+      status: guideline.status || 'draft',
+      sections: (guideline.sections || []).map(s => ({
+        section_type: s.section_type || 'overview',
+        title: s.title || '',
+        content: s.content || '',
+      })),
+    };
+    setEditData(cleanGuideline);
     setShowModal(true);
   };
 
@@ -76,8 +105,6 @@ export default function Guidelines() {
   };
 
   const handleRestoreVersion = async (version) => {
-    // version contains title, category_id, status, sections (JSON array)
-    // We'll simply edit the guideline with that data (this will create a new version as well)
     try {
       await updateGuideline(version.guideline_id, {
         title: version.title,
@@ -85,11 +112,41 @@ export default function Guidelines() {
         status: version.status,
         sections: version.sections,
       }, session.user.id);
-      setSelectedGuidelineId(null); // close modal
+      setSelectedGuidelineId(null);
       loadGuidelines();
     } catch (err) {
       alert('Restore failed: ' + err.message);
     }
+  };
+
+  // Pagination helpers
+  const goToPage = (p) => {
+    if (p >= 1 && p <= totalPages) setPage(p);
+  };
+
+  const renderPageNumbers = () => {
+    const pages = [];
+    const maxVisible = 5;
+    let startPage = Math.max(1, page - Math.floor(maxVisible / 2));
+    let endPage = startPage + maxVisible - 1;
+    if (endPage > totalPages) {
+      endPage = totalPages;
+      startPage = Math.max(1, endPage - maxVisible + 1);
+    }
+    for (let i = startPage; i <= endPage; i++) {
+      pages.push(
+        <li key={i}>
+          <button
+            className={`pagination-link ${i === page ? 'is-current' : ''}`}
+            aria-label={`Page ${i}`}
+            onClick={() => goToPage(i)}
+          >
+            {i}
+          </button>
+        </li>
+      );
+    }
+    return pages;
   };
 
   return (
@@ -133,49 +190,113 @@ export default function Guidelines() {
       {loading ? (
         <progress className="progress is-primary" max="100">Loading...</progress>
       ) : (
-        <table className="table is-fullwidth is-striped">
-          <thead>
-            <tr>
-              <th>Title</th>
-              <th>Category</th>
-              <th>Sections</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
+        <>
+          {/* Desktop table */}
+          <div className="is-hidden-mobile">
+            <table className="table is-fullwidth is-striped">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Category</th>
+                  <th>Sections</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {guidelines.map((g) => (
+                  <tr key={g.id}>
+                    <td>{g.title}</td>
+                    <td>{g.category?.name || '-'}</td>
+                    <td>{g.sections?.length || 0}</td>
+                    <td>
+                      <span className={`tag ${g.status === 'published' ? 'is-success' : 'is-warning'}`}>
+                        {g.status}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="buttons">
+                        {canWrite(profile?.role) && (
+                          <>
+                            <button className="button is-info is-small" onClick={() => openEdit(g)}>
+                              <span className="icon"><i className="fas fa-edit"></i></span>
+                            </button>
+                            <button className="button is-danger is-small" onClick={() => handleDelete(g.id)}>
+                              <span className="icon"><i className="fas fa-trash"></i></span>
+                            </button>
+                          </>
+                        )}
+                        <button className="button is-light is-small" onClick={() => setSelectedGuidelineId(g.id)}>
+                          <span className="icon"><i className="fas fa-history"></i></span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="is-hidden-tablet">
             {guidelines.map((g) => (
-              <tr key={g.id}>
-                <td>{g.title}</td>
-                <td>{g.category?.name || '-'}</td>
-                <td>{g.sections?.length || 0}</td>
-                <td>
-                  <span className={`tag ${g.status === 'published' ? 'is-success' : 'is-warning'}`}>
-                    {g.status}
-                  </span>
-                </td>
-                <td>
-                  <div className="buttons">
+              <div key={g.id} className="card mb-3">
+                <div className="card-content">
+                  <p className="title is-5">{g.title}</p>
+                  <p className="subtitle is-6">
+                    <span className="tag is-info is-light">{g.category?.name || 'No category'}</span>
+                    <span className={`tag ml-2 ${g.status === 'published' ? 'is-success' : 'is-warning'}`}>
+                      {g.status}
+                    </span>
+                  </p>
+                  <p><strong>Sections:</strong> {g.sections?.length || 0}</p>
+                  <div className="buttons mt-3">
                     {canWrite(profile?.role) && (
                       <>
                         <button className="button is-info is-small" onClick={() => openEdit(g)}>
-                          <span className="icon"><i className="fas fa-edit"></i></span>
+                          <span className="icon"><i className="fas fa-edit"></i></span> <span>Edit</span>
                         </button>
                         <button className="button is-danger is-small" onClick={() => handleDelete(g.id)}>
-                          <span className="icon"><i className="fas fa-trash"></i></span>
+                          <span className="icon"><i className="fas fa-trash"></i></span> <span>Delete</span>
                         </button>
                       </>
                     )}
                     <button className="button is-light is-small" onClick={() => setSelectedGuidelineId(g.id)}>
-                      <span className="icon"><i className="fas fa-history"></i></span>
-                      <span>History</span>
+                      <span className="icon"><i className="fas fa-history"></i></span> <span>History</span>
                     </button>
                   </div>
-                </td>
-              </tr>
+                </div>
+              </div>
             ))}
-          </tbody>
-        </table>
+          </div>
+
+          {/* Pagination controls */}
+          {totalPages > 1 && (
+            <nav className="pagination is-centered mt-4" role="navigation" aria-label="pagination">
+              <button
+                className="pagination-previous"
+                disabled={page <= 1}
+                onClick={() => goToPage(page - 1)}
+              >
+                Previous
+              </button>
+              <button
+                className="pagination-next"
+                disabled={page >= totalPages}
+                onClick={() => goToPage(page + 1)}
+              >
+                Next
+              </button>
+              <ul className="pagination-list">
+                {renderPageNumbers()}
+              </ul>
+            </nav>
+          )}
+
+          <p className="has-text-centered mt-2">
+            Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalCount)} of {totalCount} guidelines
+          </p>
+        </>
       )}
 
       {/* Editor Modal */}
@@ -188,6 +309,7 @@ export default function Guidelines() {
           </header>
           <section className="modal-card-body">
             <GuidelineForm
+              key={editData ? editData.id : 'new'}
               categories={categories}
               initialData={editData}
               onSave={handleSave}

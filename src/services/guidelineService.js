@@ -1,24 +1,35 @@
 import { supabase } from '../supabaseClient';
 
-export async function fetchGuidelines({ search, categoryId } = {}) {
+// ---------- Fetch guidelines with pagination ----------
+export async function fetchGuidelines({ search, categoryId, page = 1, pageSize = 10 } = {}) {
   let query = supabase
     .from('guidelines')
     .select(`
       *,
       category:categories(name),
       sections:guideline_sections(*)
-    `);
+    `, { count: 'exact' });  // request total count
 
   if (search) query = query.ilike('title', `%${search}%`);
   if (categoryId) query = query.eq('category_id', categoryId);
 
-  const { data, error } = await query.order('updated_at', { ascending: false });
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  const { data, error, count } = await query
+    .order('updated_at', { ascending: false })
+    .range(from, to);
+
   if (error) throw error;
-  data.forEach(g => g.sections?.sort((a,b) => a.sort_order - b.sort_order));
-  return data;
+  data.forEach(g => {
+    if (!g.sections) g.sections = [];
+    else g.sections.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+  });
+  return { data, count: count || 0 };
 }
 
 export async function createGuideline({ title, category_id, status, sections }, userId) {
+  // ... (unchanged)
   const slug = title.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, '');
   const { data: guideline, error: gErr } = await supabase
     .from('guidelines')
@@ -44,6 +55,7 @@ export async function createGuideline({ title, category_id, status, sections }, 
 }
 
 export async function updateGuideline(id, { title, category_id, status, sections }, userId) {
+  // ... (unchanged)
   const slug = title.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, '');
   const { error: gErr } = await supabase
     .from('guidelines')
@@ -74,7 +86,7 @@ export async function deleteGuideline(id) {
   if (error) throw error;
 }
 
-// ---------- Stats helpers ----------
+// ---------- Stats helpers (unchanged) ----------
 export async function getGuidelineCounts() {
   const { count: total, error } = await supabase
     .from('guidelines')
@@ -116,7 +128,7 @@ export async function getRecentGuidelines(limit = 5) {
   return data || [];
 }
 
-// --- Internal version helpers (unchanged) ---
+// --- Internal version helpers ---
 async function getNextVersionNumber(guidelineId) {
   const { data, error } = await supabase
     .from('guideline_versions')

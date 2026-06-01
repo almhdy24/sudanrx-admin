@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import MDEditor from '@uiw/react-md-editor';
 import ImageUploader from './ImageUploader';
 
@@ -7,18 +7,33 @@ const SECTION_TYPES = ['overview', 'diagnosis', 'management', 'complications', '
 const emptySection = () => ({ section_type: 'overview', title: '', content: '' });
 
 export default function GuidelineForm({ categories, initialData, onSave, onCancel, guidelineId }) {
-  const [title, setTitle] = useState(initialData?.title || '');
-  const [categoryId, setCategoryId] = useState(initialData?.category_id || '');
-  const [status, setStatus] = useState(initialData?.status || 'draft');
-  const [sections, setSections] = useState(
-    initialData?.sections?.length
-      ? initialData.sections.map(s => ({
-          section_type: s.section_type,
-          title: s.title || '',
-          content: s.content || '',
-        }))
-      : [emptySection()]
-  );
+  const [title, setTitle] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [status, setStatus] = useState('draft');
+  const [sections, setSections] = useState([emptySection()]);
+
+  // Sync local state whenever initialData changes (though key will usually reset it)
+  useEffect(() => {
+    if (initialData) {
+      setTitle(initialData.title || '');
+      setCategoryId(initialData.category_id || '');
+      setStatus(initialData.status || 'draft');
+      setSections(
+        initialData.sections?.length
+          ? initialData.sections.map(s => ({
+              section_type: s.section_type || 'overview',
+              title: s.title || '',
+              content: s.content || '',
+            }))
+          : [emptySection()]
+      );
+    } else {
+      setTitle('');
+      setCategoryId('');
+      setStatus('draft');
+      setSections([emptySection()]);
+    }
+  }, [initialData]);
 
   const addSection = () => setSections([...sections, emptySection()]);
   const removeSection = (idx) => {
@@ -36,8 +51,6 @@ export default function GuidelineForm({ categories, initialData, onSave, onCance
     newSections.splice(idx + direction, 0, moved);
     setSections(newSections);
   };
-
-  // Insert text (e.g., Markdown image) at end of content
   const insertAtEnd = (idx, text) => {
     const updated = [...sections];
     updated[idx].content = (updated[idx].content || '') + '\n' + text;
@@ -51,7 +64,6 @@ export default function GuidelineForm({ categories, initialData, onSave, onCance
 
   return (
     <form onSubmit={handleSubmit}>
-      {/* Title, Category, Status fields (same as before) */}
       <div className="field">
         <label className="label">Title</label>
         <div className="control">
@@ -164,7 +176,6 @@ export default function GuidelineForm({ categories, initialData, onSave, onCance
             </div>
           </div>
 
-          {/* Image upload for this section */}
           <ImageUploader onInsert={(markdown) => insertAtEnd(idx, markdown)} guidelineId={guidelineId} />
         </div>
       ))}
