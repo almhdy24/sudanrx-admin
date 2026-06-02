@@ -1,30 +1,30 @@
 import { useState } from 'react';
 import { generateFromPrompt, generateFromPDF } from '../../services/aiService';
 
-const defaultSections = [
-  { section_type: 'overview', title: 'Overview', content: '' },
-  { section_type: 'diagnosis', title: 'Diagnosis', content: '' },
-  { section_type: 'management', title: 'Management', content: '' },
-];
-
 export default function AiAssistant({ onInsert, onClose }) {
-  const [tab, setTab] = useState('describe'); // 'describe' or 'pdf'
+  const [tab, setTab] = useState('describe');
   const [prompt, setPrompt] = useState('');
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [generated, setGenerated] = useState(null);  // { title, sections[] }
+  const [generated, setGenerated] = useState(null);
   const [error, setError] = useState('');
+  const [progressMsg, setProgressMsg] = useState('');
 
   const handleGenerate = async () => {
     setError('');
+    setGenerated(null);
     setLoading(true);
+    setProgressMsg('');
+
     try {
       let data;
       if (tab === 'describe') {
         if (!prompt.trim()) throw new Error('Please enter a description.');
+        setProgressMsg('Generating…');
         data = await generateFromPrompt(prompt);
       } else {
         if (!file) throw new Error('Please select a PDF file.');
+        setProgressMsg('Extracting text from PDF…');
         data = await generateFromPDF(file);
       }
       setGenerated(data);
@@ -32,6 +32,7 @@ export default function AiAssistant({ onInsert, onClose }) {
       setError(err.message);
     } finally {
       setLoading(false);
+      setProgressMsg('');
     }
   };
 
@@ -52,7 +53,6 @@ export default function AiAssistant({ onInsert, onClose }) {
         </header>
 
         <section className="modal-card-body">
-          {/* Tabs */}
           <div className="tabs is-boxed">
             <ul>
               <li className={tab === 'describe' ? 'is-active' : ''}>
@@ -64,7 +64,6 @@ export default function AiAssistant({ onInsert, onClose }) {
             </ul>
           </div>
 
-          {/* Describe tab */}
           {tab === 'describe' && (
             <div className="field">
               <label className="label">Describe the guideline</label>
@@ -80,7 +79,6 @@ export default function AiAssistant({ onInsert, onClose }) {
             </div>
           )}
 
-          {/* PDF tab */}
           {tab === 'pdf' && (
             <div className="field">
               <label className="label">Upload PDF</label>
@@ -99,12 +97,13 @@ export default function AiAssistant({ onInsert, onClose }) {
                   {file && <span className="file-name">{file.name}</span>}
                 </label>
               </div>
+              <p className="help">Large PDFs are processed in chunks automatically.</p>
             </div>
           )}
 
+          {progressMsg && <div className="notification is-info is-light mt-3">{progressMsg}</div>}
           {error && <div className="notification is-danger mt-3">{error}</div>}
 
-          {/* Generate button */}
           <button
             className={`button is-primary is-fullwidth mt-3 ${loading ? 'is-loading' : ''}`}
             onClick={handleGenerate}
@@ -113,7 +112,6 @@ export default function AiAssistant({ onInsert, onClose }) {
             Generate
           </button>
 
-          {/* Generated preview */}
           {generated && (
             <div className="box mt-4">
               <h5 className="title is-6">{generated.title}</h5>
