@@ -2,10 +2,13 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import MDEditor from '@uiw/react-md-editor';
+import CDSSFlowViewer from '../components/ui/CDSSFlowViewer';
+import { fetchRules } from '../services/cdssService';
 
 export default function GuidelineView() {
   const { id } = useParams();
   const [guideline, setGuideline] = useState(null);
+  const [rules, setRules] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -24,9 +27,15 @@ export default function GuidelineView() {
         console.error(error);
         setGuideline(null);
       } else {
-        // sort sections by sort_order
         data.sections.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
         setGuideline(data);
+        // Also fetch CDSS rules
+        try {
+          const cdssRules = await fetchRules(data.id);
+          setRules(cdssRules);
+        } catch (err) {
+          console.error('Failed to load CDSS rules:', err);
+        }
       }
       setLoading(false);
     };
@@ -61,6 +70,14 @@ export default function GuidelineView() {
           </div>
         ))}
       </div>
+
+      {/* CDSS Flow */}
+      {rules.length > 0 && (
+        <div className="mt-6">
+          <h3 className="title is-4">Clinical Decision Support Rules</h3>
+          <CDSSFlowViewer rules={rules} />
+        </div>
+      )}
 
       <Link to="/guidelines" className="button is-light mt-5">
         <span className="icon"><i className="fas fa-arrow-left"></i></span>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { fetchRules, createRule, updateRule, deleteRule } from '../../services/cdssService';
+import CDSSFlowViewer from './CDSSFlowViewer';
 
 const PARAMETERS = ['temperature', 'heart_rate', 'respiratory_rate', 'systolic_bp', 'diastolic_bp',
   'oxygen_saturation', 'age', 'rdt_result', 'blood_smear', 'hb', 'platelets', 'creatinine', 'gcs'];
@@ -19,6 +20,7 @@ export default function CDSSManager({ guidelineId, onClose }) {
   const [loading, setLoading] = useState(true);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(emptyRule());
+  const [showFlow, setShowFlow] = useState(false);
 
   const load = async () => {
     try {
@@ -72,7 +74,6 @@ export default function CDSSManager({ guidelineId, onClose }) {
         </header>
 
         <section className="modal-card-body">
-          {/* Rule form */}
           <form onSubmit={handleSave} className="mb-5">
             <div className="field">
               <label className="label">Rule Name</label>
@@ -142,7 +143,21 @@ export default function CDSSManager({ guidelineId, onClose }) {
             {editId && <button type="button" className="button ml-2" onClick={() => { setEditId(null); setForm(emptyRule()); }}>Cancel</button>}
           </form>
 
-          {/* Rule list */}
+          {/* View Flowchart Button */}
+          {rules.length > 0 && (
+            <button className="button is-info is-outlined is-small mb-3" onClick={() => setShowFlow(true)}>
+              <span className="icon"><i className="fas fa-project-diagram"></i></span>
+              <span>View Flowchart</span>
+            </button>
+          )}
+
+          {showFlow && (
+            <div className="mb-5">
+              <CDSSFlowViewer rules={rules} />
+              <button className="button is-small mt-2" onClick={() => setShowFlow(false)}>Hide Flowchart</button>
+            </div>
+          )}
+
           {loading ? <progress className="progress is-primary" max="100">Loading...</progress> : (
             <table className="table is-fullwidth is-striped">
               <thead>
