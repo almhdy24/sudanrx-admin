@@ -2,7 +2,9 @@ import { useState } from 'react';
 import MDEditor from '@uiw/react-md-editor';
 import ImageUploader from './ImageUploader';
 import AiAssistant from './AiAssistant';
-import { formatSectionContent } from '../../services/aiService';  // new import
+import CDSSManager from './CDSSManager';
+import { formatSectionContent, suggestCDSSRules } from '../../services/aiService';
+import { createRule } from '../../services/cdssService';
 
 const SECTION_TYPES = ['overview', 'diagnosis', 'management', 'complications', 'red_flags', 'dosing', 'references'];
 const emptySection = () => ({ section_type: 'overview', title: '', content: '' });
@@ -21,7 +23,11 @@ export default function GuidelineForm({ categories, initialData, onSave, onCance
   const [status, setStatus] = useState(initialData?.status || 'draft');
   const [sections, setSections] = useState(safeSections);
   const [showAI, setShowAI] = useState(false);
-  const [formattingIdx, setFormattingIdx] = useState(null);  // track which section is being formatted
+  const [showCDSS, setShowCDSS] = useState(false);
+  const [formattingIdx, setFormattingIdx] = useState(null);
+  const [suggestingRules, setSuggestingRules] = useState(false);
+  const [suggestedRules, setSuggestedRules] = useState([]);
+  const [selectedRules, setSelectedRules] = useState({});
 
   const addSection = () => setSections([...sections, emptySection()]);
   const removeSection = (idx) => {
@@ -60,7 +66,6 @@ export default function GuidelineForm({ categories, initialData, onSave, onCance
     setSections(newSections);
   };
 
-  // Format a single section using AI
   const handleFormatSection = async (idx) => {
     const sec = sections[idx];
     if (!sec.content.trim()) return;
@@ -75,9 +80,44 @@ export default function GuidelineForm({ categories, initialData, onSave, onCance
     }
   };
 
+  // AI Rule Suggestion
+  const handleSuggestRules = async () => {
+    setSuggestingRules(true);
+    try {
+      const rules = await suggestCDSSRules(sections);
+      setSuggestedRules(rules);
+      setSelectedRules({}); // reset selection
+    } catch (err) {
+      alert('Rule suggestion failed: ' + err.message);
+    } finally {
+      setSuggestingRules(false);
+    }
+  };
+
+  const toggleRuleSelection = (idx) => {
+    setSelectedRules(prev => ({ ...prev, [idx]: !prev[idx] }));
+  };
+
+  const importSelectedRules = async () => {
+    if (!guidelineId) {
+      alert('Save the guideline first to assign an ID before importing rules.');
+      return;
+    }
+    try {
+      const toImport = suggestedRules.filter((_, idx) => selectedRules[idx]);
+      for (const rule of toImport) {
+        await createRule({ ...rule, guideline_id: guidelineId, status: 'active' });
+      }
+      alert(`${toImport.length} rules imported successfully.`);
+      setSuggestedRules([]);
+    } catch (err) {
+      alert('Import failed: ' + err.message);
+    }
+  };
+
   return (
     <form onSubmit={handleSubmit}>
-      {/* Title, Category, Status (unchanged) */}
+      {/* Title, Category, Status */}
       <div className="field">
         <label className="label">Title</label>
         <div className="control">
@@ -114,11 +154,30 @@ export default function GuidelineForm({ categories, initialData, onSave, onCance
         </div>
       </div>
 
-      {/* AI Assist Button */}
-      <button type="button" className="button is-info is-outlined" onClick={() => setShowAI(true)}>
-        <span className="icon"><i className="fas fa-robot"></i></span>
-        <span>AI Assist</span>
-      </button>
+      {/* AI Assist & CDSS buttons */}
+      <div className="buttons">
+        <button type="button" className="button is-info is-outlined" onClick={() => setShowAI(true)}>
+          <span className="icon"><i className="fas fa-robot"></i></span>
+          <span>AI Assist</span>
+        </button>
+        {guidelineId && (
+          <button type="button" className="button is-warning is-outlined" onClick={() => setShowCDSS(true)}>
+            <span className="icon"><i className="fas fa-microchip"></i></span>
+            <span>CDSS Rules</span>
+          </button>
+        )}
+        {sections.length > 0 && (
+          <button
+            type="button"
+            className={`button is-success is-outlined ${suggestingRules ? 'is-loading' : ''}`}
+            onClick={handleSuggestRules}
+            disabled={suggestingRules}
+          >
+            <span className="icon"><i className="fas fa-lightbulb"></i></span>
+            <span>Suggest Rules</span>
+          </button>
+        )}
+      </div>
 
       <hr />
       <div className="level">
@@ -145,10 +204,7 @@ export default function GuidelineForm({ categories, initialData, onSave, onCance
                   <div className="field">
                     <div className="control">
                       <div className="select">
-                        <select
-                          value={sec.section_type}
-                          onChange={e => updateSection(idx, 'section_type', e.target.value)}
-                        >
+                        <select value={sec.section_type} onChange={e => updateSection(idx, 'section_type', e.target.value)}>
                           {SECTION_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                           <option value="custom">custom</option>
                         </select>
@@ -160,14 +216,8 @@ export default function GuidelineForm({ categories, initialData, onSave, onCance
             </div>
             <div className="level-right">
               <div className="buttons">
-                {/* AI Format button per section */}
-                <button
-                  type="button"
-                  className={`button is-small is-warning ${formattingIdx === idx ? 'is-loading' : ''}`}
-                  title="AI format this section"
-                  onClick={() => handleFormatSection(idx)}
-                  disabled={formattingIdx === idx || !sec.content.trim()}
-                >
+                <button type="button" className={`button is-small is-warning ${formattingIdx === idx ? 'is-loading' : ''}`}
+                  title="AI format this section" onClick={() => handleFormatSection(idx)} disabled={formattingIdx === idx || !sec.content.trim()}>
                   <span className="icon"><i className="fas fa-magic"></i></span>
                   <span>AI Format</span>
                 </button>
@@ -187,23 +237,15 @@ export default function GuidelineForm({ categories, initialData, onSave, onCance
           <div className="field">
             <label className="label">Section Title (optional)</label>
             <div className="control">
-              <input
-                className="input"
-                placeholder="e.g. Overview, First-line Treatment"
-                value={sec.title}
-                onChange={e => updateSection(idx, 'title', e.target.value)}
-              />
+              <input className="input" placeholder="e.g. Overview, First-line Treatment" value={sec.title}
+                onChange={e => updateSection(idx, 'title', e.target.value)} />
             </div>
           </div>
 
           <div className="field">
             <label className="label">Content (Markdown)</label>
             <div className="control">
-              <MDEditor
-                value={sec.content}
-                onChange={value => updateSection(idx, 'content', value || '')}
-                height={300}
-              />
+              <MDEditor value={sec.content} onChange={value => updateSection(idx, 'content', value || '')} height={300} />
             </div>
           </div>
 
@@ -224,11 +266,37 @@ export default function GuidelineForm({ categories, initialData, onSave, onCance
       </div>
 
       {/* AI Assistant Modal */}
-      {showAI && (
-        <AiAssistant
-          onInsert={handleAiInsert}
-          onClose={() => setShowAI(false)}
-        />
+      {showAI && <AiAssistant onInsert={handleAiInsert} onClose={() => setShowAI(false)} />}
+
+      {/* CDSS Manager Modal */}
+      {showCDSS && <CDSSManager guidelineId={guidelineId} onClose={() => setShowCDSS(false)} />}
+
+      {/* Suggested Rules Import Modal */}
+      {suggestedRules.length > 0 && (
+        <div className="modal is-active">
+          <div className="modal-background" onClick={() => setSuggestedRules([])}></div>
+          <div className="modal-card" style={{ width: '90%', maxWidth: '600px' }}>
+            <header className="modal-card-head">
+              <p className="modal-card-title">Suggested CDSS Rules</p>
+              <button className="delete" onClick={() => setSuggestedRules([])}></button>
+            </header>
+            <section className="modal-card-body">
+              {suggestedRules.map((rule, idx) => (
+                <div key={idx} className="box mb-2">
+                  <label className="checkbox">
+                    <input type="checkbox" checked={!!selectedRules[idx]} onChange={() => toggleRuleSelection(idx)} />
+                    <strong>{rule.name}</strong>
+                  </label>
+                  <p className="is-size-7">Condition: {rule.condition?.parameter} {rule.condition?.operator} {rule.condition?.value}</p>
+                  <p className="is-size-7">Action: {rule.action?.message}</p>
+                </div>
+              ))}
+              <button className="button is-primary" onClick={importSelectedRules} disabled={!Object.values(selectedRules).some(Boolean)}>
+                Import Selected Rules
+              </button>
+            </section>
+          </div>
+        </div>
       )}
     </form>
   );

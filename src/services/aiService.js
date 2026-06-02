@@ -182,3 +182,77 @@ export async function formatSectionContent(sectionType, content) {
   });
   return result.response.text().trim();
 }
+
+// =====================
+// CDSS Rule Suggestion
+// =====================
+const RULE_SUGGESTION_PROMPT = `
+You are a clinical decision support system expert. Given the following clinical guideline content, extract actionable CDSS rules.
+Each rule must be an object with:
+- "name": short description
+- "condition": { "parameter": "parameter_name", "operator": ">|<|>=|<=|==|!=", "value": "threshold" }
+- "action": { "type": "recommend", "message": "clear clinical instruction" }
+- "priority": integer (1=high, 2=medium, 3=low)
+
+Parameters must be standard: temperature, heart_rate, respiratory_rate, systolic_bp, diastolic_bp, oxygen_saturation, age, rdt_result (positive/negative), blood_smear, hb, platelets, creatinine, gcs.
+
+Rules should be evidence-based and directly derived from the text. DO NOT invent rules. If no rules can be inferred, return an empty array.
+Output ONLY a JSON array of rule objects, nothing else.
+
+Guideline content:
+{content}
+
+Rules (JSON array):
+`;
+
+export async function suggestCDSSRules(sections) {
+  if (!API_KEY) throw new Error('Gemini API key not configured');
+  // Combine all section contents into one text
+  const content = sections.map(s => `## ${s.title || s.section_type}\n${s.content}`).join('\n\n');
+  const prompt = RULE_SUGGESTION_PROMPT.replace('{content}', content.substring(0, 12000));
+
+  const result = await fastModel.generateContent({
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: { responseMimeType: 'application/json' },
+  });
+  const text = result.response.text();
+  // Parse JSON array
+  const cleaned = text.replace(/```json|```/g, '').trim();
+  return JSON.parse(cleaned);
+}
+
+// =====================
+// CDSS Rule Suggestion
+// =====================
+const RULE_SUGGESTION_PROMPT = `
+You are a clinical decision support system expert. Given the following clinical guideline content, extract actionable CDSS rules.
+Each rule must be an object with:
+- "name": short description
+- "condition": { "parameter": "parameter_name", "operator": ">|<|>=|<=|==|!=", "value": "threshold" }
+- "action": { "type": "recommend", "message": "clear clinical instruction" }
+- "priority": integer (1=high, 2=medium, 3=low)
+
+Parameters must be one of: temperature, heart_rate, respiratory_rate, systolic_bp, diastolic_bp, oxygen_saturation, age, rdt_result, blood_smear, hb, platelets, creatinine, gcs.
+
+Rules must be directly derived from the text. If no rules can be inferred, return an empty array.
+Output ONLY a JSON array of rule objects, nothing else.
+
+Guideline content:
+{content}
+
+Rules (JSON array):
+`;
+
+export async function suggestCDSSRules(sections) {
+  if (!API_KEY) throw new Error('Gemini API key not configured');
+  const content = sections.map(s => `## ${s.title || s.section_type}\n${s.content}`).join('\n\n');
+  const prompt = RULE_SUGGESTION_PROMPT.replace('{content}', content.substring(0, 12000));
+
+  const result = await fastModel.generateContent({
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: { responseMimeType: 'application/json' },
+  });
+  const text = result.response.text();
+  const cleaned = text.replace(/```json|```/g, '').trim();
+  return JSON.parse(cleaned);
+}
