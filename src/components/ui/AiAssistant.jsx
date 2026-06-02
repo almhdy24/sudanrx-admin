@@ -10,7 +10,10 @@ export default function AiAssistant({ onInsert, onClose }) {
   const [error, setError] = useState('');
   const [progressMsg, setProgressMsg] = useState('');
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (e) => {
+    // Prevent any accidental form submission
+    if (e) e.preventDefault();
+
     setError('');
     setGenerated(null);
     setLoading(true);
@@ -30,6 +33,7 @@ export default function AiAssistant({ onInsert, onClose }) {
       setGenerated(data);
     } catch (err) {
       setError(err.message);
+      // If PDF worker fails, we may need to reload? No, just show error.
     } finally {
       setLoading(false);
       setProgressMsg('');
@@ -43,16 +47,32 @@ export default function AiAssistant({ onInsert, onClose }) {
     }
   };
 
+  // Stop propagation on modal card click so background doesn't close
+  const stopPropagation = (e) => e.stopPropagation();
+
   return (
     <div className="modal is-active">
-      <div className="modal-background" onClick={onClose}></div>
-      <div className="modal-card" style={{ width: '90%', maxWidth: '600px' }}>
+      {/* Background click only if not loading */}
+      <div
+        className="modal-background"
+        onClick={loading ? undefined : onClose}
+      ></div>
+
+      {/* Modal card – stop clicks from reaching background */}
+      <div
+        className="modal-card"
+        style={{ width: '90%', maxWidth: '600px' }}
+        onClick={stopPropagation}
+      >
         <header className="modal-card-head">
           <p className="modal-card-title">AI Assistant</p>
-          <button className="delete" onClick={onClose}></button>
+          {!loading && (
+            <button className="delete" onClick={onClose}></button>
+          )}
         </header>
 
         <section className="modal-card-body">
+          {/* Tabs */}
           <div className="tabs is-boxed">
             <ul>
               <li className={tab === 'describe' ? 'is-active' : ''}>
@@ -89,6 +109,8 @@ export default function AiAssistant({ onInsert, onClose }) {
                     type="file"
                     accept="application/pdf"
                     onChange={e => setFile(e.target.files[0])}
+                    // Do not allow form submission
+                    onClick={(e) => e.stopPropagation()}
                   />
                   <span className="file-cta">
                     <span className="file-icon"><i className="fas fa-upload"></i></span>
@@ -105,6 +127,7 @@ export default function AiAssistant({ onInsert, onClose }) {
           {error && <div className="notification is-danger mt-3">{error}</div>}
 
           <button
+            type="button"
             className={`button is-primary is-fullwidth mt-3 ${loading ? 'is-loading' : ''}`}
             onClick={handleGenerate}
             disabled={loading}
@@ -121,7 +144,7 @@ export default function AiAssistant({ onInsert, onClose }) {
                   <p className="is-size-7">{sec.content.substring(0, 200)}...</p>
                 </div>
               ))}
-              <button className="button is-success" onClick={handleInsert}>
+              <button type="button" className="button is-success" onClick={handleInsert}>
                 Insert into Editor
               </button>
             </div>
@@ -129,7 +152,9 @@ export default function AiAssistant({ onInsert, onClose }) {
         </section>
 
         <footer className="modal-card-foot">
-          <button className="button" onClick={onClose}>Close</button>
+          <button type="button" className="button" onClick={onClose}>
+            Close
+          </button>
         </footer>
       </div>
     </div>
