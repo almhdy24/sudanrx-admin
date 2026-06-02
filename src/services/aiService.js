@@ -1,23 +1,19 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import Groq from 'groq-sdk';
 import * as pdfjsLib from 'pdfjs-dist';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-// =====================
-// INIT
-// =====================
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const genAI = new GoogleGenerativeAI(API_KEY || '');
+const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const GROQ_KEY = import.meta.env.VITE_GROQ_API_KEY;
 
-// Default models – can be overridden via AI Settings
-let primaryModelName = localStorage.getItem('ai_primary_model') || 'gemini-2.5-flash';
-let fallbackModelName = localStorage.getItem('ai_fallback_model') || 'gemini-2.0-flash';
-let maxDailyRequests = parseInt(localStorage.getItem('ai_daily_limit') || '18', 10);
+let geminiAI = GEMINI_KEY ? new GoogleGenerativeAI(GEMINI_KEY) : null;
+let groq = GROQ_KEY ? new Groq({ apiKey: GROQ_KEY, dangerouslyAllowBrowser: true }) : null;
 
-// Request counter with daily reset
 const today = new Date().toDateString();
 const storedDay = localStorage.getItem('ai_request_day');
+let geminiExhausted = localStorage.getItem('gemini_exhausted') === today;
 let requestCount = 0;
 
 if (storedDay === today) {
@@ -25,56 +21,36 @@ if (storedDay === today) {
 } else {
   localStorage.setItem('ai_request_day', today);
   localStorage.setItem('ai_request_count', '0');
+  localStorage.removeItem('gemini_exhausted');
+  geminiExhausted = false;
 }
 
-function incrementRequestCount() {
-  requestCount++;
-  localStorage.setItem('ai_request_count', requestCount.toString());
+function markGeminiExhausted() {
+  geminiExhausted = true;
+  localStorage.setItem('gemini_exhausted', today);
 }
+
+function getSetting(key, fallback) {
+  return localStorage.getItem(key) || fallback;
+}
+
+let primaryModel = getSetting('ai_primary_model', 'gemini-2.5-flash');
+let fallbackModel = getSetting('ai_fallback_model', 'gemini-2.0-flash');
+let groqModel = getSetting('ai_groq_model', 'llama-3.3-70b-versatile');
+let maxDailyRequests = parseInt(getSetting('ai_daily_limit', '18'), 10);
+
+const GROQ_FALLBACK_CHAIN = [
+  'llama-3.3-70b-versatile',
+  'llama-3.1-8b-instant',
+  'gemma2-9b-it',
+];
 
 // =====================
-// MODEL FACTORY
-// =====================
-function getModel() {
-  if (requestCount < maxDailyRequests) {
-    return genAI.getGenerativeModel({ model: primaryModelName });
-  }
-  console.warn(`Daily limit reached (${maxDailyRequests}). Switching to fallback model: ${fallbackModelName}`);
-  return genAI.getGenerativeModel({ model: fallbackModelName });
-}
-
-/**
- * Wrapper that applies rate‑limit and model switching.
- */
-async function safeGenerate(prompt, jsonMode = false) {
-  if (!API_KEY) throw new Error('Gemini API key missing');
-
-  incrementRequestCount();
-
-  const model = getModel();
-  const config = jsonMode ? { generationConfig: { responseMimeType: 'application/json' } } : {};
-
-  const result = await model.generateContent({
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    ...config,
-  });
-  return result.response.text();
-}
-
-// =====================
-// SUDAN CLINICAL STYLE LAYER
+// SUDAN STYLE (unchanged)
 // =====================
 const SUDAN_STYLE = `
-You are writing as a Sudan Ministry of Health clinical guideline author.
-
-STYLE REQUIREMENTS:
-- Natural clinical English used in African hospital protocols
-- NOT AI-like or overly structured
-- Avoid robotic formatting
-- Use phrases like:
-  "is recommended", "should be considered", "may indicate", "patients typically present"
-- Keep tone practical for frontline clinicians
-- Avoid generic AI wording like "Key Points"
+You are writing as a Sudan Ministry of Health national clinical guideline author.
+Style: real hospital protocol tone, natural clinical English, suitable for doctors, interns, nurses in Sudan hospitals.
 `;
 
 // =====================
@@ -82,50 +58,55 @@ STYLE REQUIREMENTS:
 // =====================
 const STRUCTURED_GENERATION_PROMPT = `
 ${SUDAN_STYLE}
-
-You are a Sudanese clinical guideline formatter.
-
-Return ONLY a valid JSON object:
-
+Convert input into a structured clinical guideline.
+Return ONLY valid JSON:
 {
-  "title": "short clinical title",
+  "title": "clinical guideline title",
   "sections": [
     {
       "section_type": "overview|indications|diagnosis|management|red_flags|prevention|references",
       "title": "section title",
-      "content": "clinical Markdown text in Sudan protocol style"
+      "content": "well-structured Markdown in Sudan protocol style"
     }
   ]
 }
-
-CRITICAL RULES:
-- NO extra text, NO markdown outside JSON
-- Use ONLY provided information
-- DO NOT invent medical facts
-- If missing info → write "NOT CONFIRMED"
-- Preserve all clinical values exactly
-- Write like REAL Sudan national guideline document
+RULES:
+- Output ONLY JSON
+- No invented medical facts
+- If missing info → "NOT CONFIRMED"
+- Preserve all clinical values & dosages exactly
+- Use Markdown: headings (##), bold (**), bullet lists, numbered lists
+- Write like real Ministry of Health document
 `;
 
+// IMPROVED FORMAT PROMPT – strict Markdown with example
 const SECTION_FORMAT_PROMPT = `
 ${SUDAN_STYLE}
 
-You are editing a Sudan national clinical guideline section.
+You are an expert medical editor. Format the following clinical text into **professional, consistent Markdown** suitable for a clinical guidelines platform.
 
-TASK:
-Rewrite into natural clinical guideline style used in hospital protocols.
+STRICT FORMATTING RULES (follow exactly):
+- Start with a level-2 heading (##) that summarizes the section if not already present.
+- Use bullet points (*) for lists of symptoms, criteria, or options.
+- Use numbered lists (1.) for sequential steps or priorities.
+- Bold (**) only the most critical medical terms or actions (e.g., **IMPORTANT**, **first-line**).
+- Preserve all original information, dosages, and clinical facts exactly.
+- Do NOT add any extra commentary or change the meaning.
+- Do NOT use HTML tags.
+- Output ONLY the Markdown content, without any wrapper or explanation.
 
-RULES:
-- Keep all medical facts unchanged
-- Do NOT sound like AI
-- Do NOT add new information
-- Use natural clinical flow (not bullet-heavy AI style)
-- Preserve dosages exactly
-- If already good → return unchanged
+Example of expected output:
+## Initial Management
+* Assess airway, breathing, circulation
+* Start **oxygen therapy** if SpO₂ < 90%
+* Obtain IV access
+1. Administer first dose of **IV artesunate 2.4 mg/kg**
+2. Check blood glucose
+3. Begin fluid resuscitation with **Ringer's lactate 10 mL/kg**
 
 Section type: {section_type}
 
-Text:
+TEXT:
 ---
 {content}
 ---
@@ -133,21 +114,18 @@ Text:
 
 const RULE_SUGGESTION_PROMPT = `
 You are a Clinical Decision Support System (CDSS) for Sudan hospitals.
-
 STRICT RULES:
 - NO diagnosis
 - NO prescriptions
-- ONLY supportive clinical rules
-- ONLY guideline-based logic
+- ONLY safety-based clinical rules
+- ONLY extract rules explicitly supported by text
 
-Extract rules ONLY if clearly stated.
-
-Return JSON array:
+Return JSON array ONLY:
 [
   {
     "name": "",
     "condition": {
-      "parameter": "",
+      "parameter": "temperature|heart_rate|respiratory_rate|systolic_bp|diastolic_bp|oxygen_saturation|age|rdt_result|blood_smear|hb|platelets|creatinine|gcs",
       "operator": ">|<|>=|<=|==|!=",
       "value": ""
     },
@@ -158,12 +136,6 @@ Return JSON array:
     "priority": 1
   }
 ]
-
-Allowed parameters:
-temperature, heart_rate, respiratory_rate, systolic_bp, diastolic_bp,
-oxygen_saturation, age, rdt_result, blood_smear, hb, platelets,
-creatinine, gcs
-
 If unclear → return []
 `;
 
@@ -171,33 +143,79 @@ If unclear → return []
 // HELPERS
 // =====================
 function extractJson(text) {
-  try {
-    return JSON.parse(text);
-  } catch (e) {
+  try { return JSON.parse(text); } catch (_) {
     const cleaned = text.replace(/```json|```/g, '').trim();
     const match = cleaned.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-    if (match) {
-      return JSON.parse(match[0]);
-    }
+    if (match) return JSON.parse(match[0]);
     throw new Error('Invalid AI JSON response');
   }
 }
 
-function chunkText(text, maxLength = 8000) {
+function chunkText(text, size = 8000) {
   const chunks = [];
-  for (let i = 0; i < text.length; i += maxLength) {
-    chunks.push(text.slice(i, i + maxLength));
-  }
+  for (let i = 0; i < text.length; i += size) chunks.push(text.slice(i, i + size));
   return chunks;
 }
 
-// =====================
-// PUBLIC API
-// =====================
+async function groqGenerate(prompt, jsonMode, model) {
+  const completion = await groq.chat.completions.create({
+    model,
+    messages: [
+      {
+        role: 'system',
+        content: jsonMode
+          ? 'Output ONLY valid JSON. No explanation.'
+          : 'You are a helpful clinical assistant.',
+      },
+      { role: 'user', content: prompt },
+    ],
+    temperature: 0.2,
+    response_format: jsonMode ? { type: 'json_object' } : undefined,
+  });
+  return completion.choices[0]?.message?.content || '';
+}
+
+async function unifiedGenerate(prompt, jsonMode = false) {
+  if (geminiAI && !geminiExhausted && requestCount < maxDailyRequests) {
+    requestCount++;
+    localStorage.setItem('ai_request_count', requestCount.toString());
+    const modelName = requestCount <= maxDailyRequests ? primaryModel : fallbackModel;
+    const model = geminiAI.getGenerativeModel({ model: modelName });
+    try {
+      const config = jsonMode ? { generationConfig: { responseMimeType: 'application/json' } } : {};
+      const result = await model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        ...config,
+      });
+      return result.response.text();
+    } catch (err) {
+      if (err?.status === 429 || err?.message?.includes('429')) {
+        markGeminiExhausted();
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  if (!groq) throw new Error('No AI provider available');
+
+  const modelsToTry = [groqModel, ...GROQ_FALLBACK_CHAIN.filter(m => m !== groqModel)];
+  for (const model of modelsToTry) {
+    try {
+      return await groqGenerate(prompt, jsonMode, model);
+    } catch (err) {
+      if (err.message?.includes('decommissioned') || err.message?.includes('no longer supported')) {
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error('All AI providers failed');
+}
 
 export async function generateFromPrompt(description) {
   const prompt = `${STRUCTURED_GENERATION_PROMPT}\n\nINPUT:\n${description}`;
-  const text = await safeGenerate(prompt, true);
+  const text = await unifiedGenerate(prompt, true);
   return extractJson(text);
 }
 
@@ -208,20 +226,19 @@ export async function generateFromPDF(file) {
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
-    const strings = content.items.map(item => item.str);
-    fullText += strings.join(' ') + '\n';
+    fullText += content.items.map(item => item.str).join(' ') + '\n';
   }
 
   const chunks = chunkText(fullText, 8000);
   const sections = [];
-  let title = 'Untitled Guideline';
+  let title = 'Clinical Guideline';
 
   for (const chunk of chunks) {
-    const prompt = `${STRUCTURED_GENERATION_PROMPT}\n\nRAW TEXT:\n${chunk}`;
-    const text = await safeGenerate(prompt, true);
+    const prompt = `${STRUCTURED_GENERATION_PROMPT}\n\nRAW:\n${chunk}`;
+    const text = await unifiedGenerate(prompt, true);
     const data = extractJson(text);
     if (data?.sections) sections.push(...data.sections);
-    if (title === 'Untitled Guideline' && data?.title) title = data.title;
+    if (title === 'Clinical Guideline' && data?.title) title = data.title;
   }
 
   const seen = new Set();
@@ -232,7 +249,6 @@ export async function generateFromPDF(file) {
       uniqueSections.push(s);
     }
   }
-
   return { title, sections: uniqueSections };
 }
 
@@ -240,7 +256,7 @@ export async function formatSectionContent(sectionType, content) {
   const prompt = SECTION_FORMAT_PROMPT
     .replace('{section_type}', sectionType)
     .replace('{content}', content);
-  const text = await safeGenerate(prompt, false);  // no JSON mode
+  const text = await unifiedGenerate(prompt, false);
   return text.trim();
 }
 
@@ -250,33 +266,36 @@ export async function suggestCDSSRules(sections) {
     .join('\n\n')
     .substring(0, 12000);
   const prompt = `${RULE_SUGGESTION_PROMPT}\n\nCONTENT:\n${content}`;
-  const text = await safeGenerate(prompt, true);
+  const text = await unifiedGenerate(prompt, true);
   return extractJson(text);
 }
 
-// =====================
-// SETTINGS HELPERS
-// =====================
 export function getAiSettings() {
   return {
-    primaryModel: localStorage.getItem('ai_primary_model') || 'gemini-2.5-flash',
-    fallbackModel: localStorage.getItem('ai_fallback_model') || 'gemini-2.0-flash',
-    dailyLimit: parseInt(localStorage.getItem('ai_daily_limit') || '18', 10),
-    requestCount: requestCount,
+    primaryModel: getSetting('ai_primary_model', 'gemini-2.5-flash'),
+    fallbackModel: getSetting('ai_fallback_model', 'gemini-2.0-flash'),
+    groqModel: getSetting('ai_groq_model', 'llama-3.3-70b-versatile'),
+    dailyLimit: parseInt(getSetting('ai_daily_limit', '18'), 10),
+    requestCount,
+    geminiExhausted,
   };
 }
 
-export function updateAiSettings({ primaryModel, fallbackModel, dailyLimit }) {
+export function updateAiSettings({ primaryModel, fallbackModel, groqModel, dailyLimit }) {
   if (primaryModel) {
-    primaryModelName = primaryModel;
     localStorage.setItem('ai_primary_model', primaryModel);
+    primaryModel = primaryModel;
   }
   if (fallbackModel) {
-    fallbackModelName = fallbackModel;
     localStorage.setItem('ai_fallback_model', fallbackModel);
+    fallbackModel = fallbackModel;
+  }
+  if (groqModel) {
+    localStorage.setItem('ai_groq_model', groqModel);
+    groqModel = groqModel;
   }
   if (dailyLimit !== undefined) {
-    maxDailyRequests = parseInt(dailyLimit, 10);
     localStorage.setItem('ai_daily_limit', dailyLimit.toString());
+    maxDailyRequests = parseInt(dailyLimit, 10);
   }
 }

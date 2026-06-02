@@ -29,7 +29,6 @@ export default function GuidelineView() {
       } else {
         data.sections.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
         setGuideline(data);
-        // Also fetch CDSS rules
         try {
           const cdssRules = await fetchRules(data.id);
           setRules(cdssRules);
@@ -63,15 +62,21 @@ export default function GuidelineView() {
       </div>
 
       <div className="content">
-        {guideline.sections.map((section, idx) => (
-          <div key={idx} className="mb-6">
-            {section.title && <h3 className="title is-4">{section.title}</h3>}
-            <MDEditor.Markdown source={section.content} />
-          </div>
-        ))}
+        {guideline.sections.map((section, idx) => {
+          const content = section.content || '';
+          // Check if content starts with a Markdown heading (e.g., ##, ###)
+          const startsWithHeading = /^#{1,6}\s/.test(content);
+          return (
+            <div key={idx} className="mb-6">
+              {section.title && !startsWithHeading && (
+                <h3 className="title is-4">{section.title}</h3>
+              )}
+              <MDEditor.Markdown source={content} />
+            </div>
+          );
+        })}
       </div>
 
-      {/* CDSS Flow */}
       {rules.length > 0 && (
         <div className="mt-6">
           <h3 className="title is-4">Clinical Decision Support Rules</h3>
