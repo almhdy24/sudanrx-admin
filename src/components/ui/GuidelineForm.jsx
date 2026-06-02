@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import MDEditor from '@uiw/react-md-editor';
 import ImageUploader from './ImageUploader';
-import AiAssistant from './AiAssistant';   // new
+import AiAssistant from './AiAssistant';
+import { formatSectionContent } from '../../services/aiService';  // new import
 
 const SECTION_TYPES = ['overview', 'diagnosis', 'management', 'complications', 'red_flags', 'dosing', 'references'];
-
 const emptySection = () => ({ section_type: 'overview', title: '', content: '' });
 
 export default function GuidelineForm({ categories, initialData, onSave, onCancel, guidelineId }) {
@@ -20,9 +20,8 @@ export default function GuidelineForm({ categories, initialData, onSave, onCance
   const [categoryId, setCategoryId] = useState(initialData?.category_id || '');
   const [status, setStatus] = useState(initialData?.status || 'draft');
   const [sections, setSections] = useState(safeSections);
-  const [showAI, setShowAI] = useState(false);   // new
-
-  // ... (all existing handlers unchanged)
+  const [showAI, setShowAI] = useState(false);
+  const [formattingIdx, setFormattingIdx] = useState(null);  // track which section is being formatted
 
   const addSection = () => setSections([...sections, emptySection()]);
   const removeSection = (idx) => {
@@ -51,17 +50,29 @@ export default function GuidelineForm({ categories, initialData, onSave, onCance
     onSave({ title, category_id: categoryId, status, sections });
   };
 
-  // Called when AI returns data
   const handleAiInsert = (data) => {
-    // data = { title, sections[] }
     if (data.title) setTitle(data.title);
-    // Map AI sections to our section format
     const newSections = data.sections.map(s => ({
       section_type: s.section_type || 'overview',
       title: s.title || '',
       content: s.content || '',
     }));
     setSections(newSections);
+  };
+
+  // Format a single section using AI
+  const handleFormatSection = async (idx) => {
+    const sec = sections[idx];
+    if (!sec.content.trim()) return;
+    setFormattingIdx(idx);
+    try {
+      const improved = await formatSectionContent(sec.section_type, sec.content);
+      updateSection(idx, 'content', improved);
+    } catch (err) {
+      alert('Formatting failed: ' + err.message);
+    } finally {
+      setFormattingIdx(null);
+    }
   };
 
   return (
@@ -149,6 +160,17 @@ export default function GuidelineForm({ categories, initialData, onSave, onCance
             </div>
             <div className="level-right">
               <div className="buttons">
+                {/* AI Format button per section */}
+                <button
+                  type="button"
+                  className={`button is-small is-warning ${formattingIdx === idx ? 'is-loading' : ''}`}
+                  title="AI format this section"
+                  onClick={() => handleFormatSection(idx)}
+                  disabled={formattingIdx === idx || !sec.content.trim()}
+                >
+                  <span className="icon"><i className="fas fa-magic"></i></span>
+                  <span>AI Format</span>
+                </button>
                 <button type="button" className="button is-small" onClick={() => moveSection(idx, -1)} disabled={idx === 0}>
                   <span className="icon"><i className="fas fa-arrow-up"></i></span>
                 </button>
