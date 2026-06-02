@@ -1,39 +1,28 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import MDEditor from '@uiw/react-md-editor';
 import ImageUploader from './ImageUploader';
+import AiAssistant from './AiAssistant';   // new
 
 const SECTION_TYPES = ['overview', 'diagnosis', 'management', 'complications', 'red_flags', 'dosing', 'references'];
 
 const emptySection = () => ({ section_type: 'overview', title: '', content: '' });
 
 export default function GuidelineForm({ categories, initialData, onSave, onCancel, guidelineId }) {
-  const [title, setTitle] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [status, setStatus] = useState('draft');
-  const [sections, setSections] = useState([emptySection()]);
+  const safeSections = initialData?.sections?.length
+    ? initialData.sections.map(s => ({
+        section_type: s.section_type || 'overview',
+        title: s.title || '',
+        content: s.content || '',
+      }))
+    : [emptySection()];
 
-  // Sync local state whenever initialData changes (though key will usually reset it)
-  useEffect(() => {
-    if (initialData) {
-      setTitle(initialData.title || '');
-      setCategoryId(initialData.category_id || '');
-      setStatus(initialData.status || 'draft');
-      setSections(
-        initialData.sections?.length
-          ? initialData.sections.map(s => ({
-              section_type: s.section_type || 'overview',
-              title: s.title || '',
-              content: s.content || '',
-            }))
-          : [emptySection()]
-      );
-    } else {
-      setTitle('');
-      setCategoryId('');
-      setStatus('draft');
-      setSections([emptySection()]);
-    }
-  }, [initialData]);
+  const [title, setTitle] = useState(initialData?.title || '');
+  const [categoryId, setCategoryId] = useState(initialData?.category_id || '');
+  const [status, setStatus] = useState(initialData?.status || 'draft');
+  const [sections, setSections] = useState(safeSections);
+  const [showAI, setShowAI] = useState(false);   // new
+
+  // ... (all existing handlers unchanged)
 
   const addSection = () => setSections([...sections, emptySection()]);
   const removeSection = (idx) => {
@@ -62,8 +51,22 @@ export default function GuidelineForm({ categories, initialData, onSave, onCance
     onSave({ title, category_id: categoryId, status, sections });
   };
 
+  // Called when AI returns data
+  const handleAiInsert = (data) => {
+    // data = { title, sections[] }
+    if (data.title) setTitle(data.title);
+    // Map AI sections to our section format
+    const newSections = data.sections.map(s => ({
+      section_type: s.section_type || 'overview',
+      title: s.title || '',
+      content: s.content || '',
+    }));
+    setSections(newSections);
+  };
+
   return (
     <form onSubmit={handleSubmit}>
+      {/* Title, Category, Status (unchanged) */}
       <div className="field">
         <label className="label">Title</label>
         <div className="control">
@@ -99,6 +102,12 @@ export default function GuidelineForm({ categories, initialData, onSave, onCance
           </div>
         </div>
       </div>
+
+      {/* AI Assist Button */}
+      <button type="button" className="button is-info is-outlined" onClick={() => setShowAI(true)}>
+        <span className="icon"><i className="fas fa-robot"></i></span>
+        <span>AI Assist</span>
+      </button>
 
       <hr />
       <div className="level">
@@ -191,6 +200,14 @@ export default function GuidelineForm({ categories, initialData, onSave, onCance
           <button type="button" className="button" onClick={onCancel}>Cancel</button>
         </div>
       </div>
+
+      {/* AI Assistant Modal */}
+      {showAI && (
+        <AiAssistant
+          onInsert={handleAiInsert}
+          onClose={() => setShowAI(false)}
+        />
+      )}
     </form>
   );
 }
