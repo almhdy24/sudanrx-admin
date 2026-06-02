@@ -9,7 +9,8 @@ import Guidelines from './pages/Guidelines';
 import GuidelineView from './pages/GuidelineView';
 import Tools from './pages/Tools';
 import Sync from './pages/Sync';
-import UserManagement from './pages/UserManagement';   // new
+import UserManagement from './pages/UserManagement';
+import AiSettings from './pages/AiSettings';   // new
 import Navbar from './components/layout/Navbar';
 import Sidebar from './components/layout/Sidebar';
 
@@ -34,7 +35,8 @@ function Layout() {
               <Route path="guidelines/:id" element={<GuidelineView />} />
               <Route path="tools" element={<Tools />} />
               <Route path="sync" element={<Sync />} />
-              <Route path="users" element={<UserManagement />} />   {/* new */}
+              <Route path="users" element={<UserManagement />} />
+              <Route path="ai-settings" element={<AiSettings />} />  {/* new */}
             </Routes>
           </section>
         </div>

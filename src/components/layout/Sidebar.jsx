@@ -33,6 +33,11 @@ export default function Sidebar({ visible }) {
             <span className="icon"><i className="fas fa-users"></i></span> Users
           </NavLink>
         </li>
+        <li>
+          <NavLink to="/ai-settings" className={({ isActive }) => isActive ? 'is-active' : ''}>
+            <span className="icon"><i className="fas fa-microchip"></i></span> AI Settings
+          </NavLink>
+        </li>
       </ul>
 
       <p className="menu-label">Tools</p>
