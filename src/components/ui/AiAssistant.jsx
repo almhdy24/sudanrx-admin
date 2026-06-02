@@ -11,9 +11,7 @@ export default function AiAssistant({ onInsert, onClose }) {
   const [progressMsg, setProgressMsg] = useState('');
 
   const handleGenerate = async (e) => {
-    // Prevent any accidental form submission
-    if (e) e.preventDefault();
-
+    e.preventDefault();
     setError('');
     setGenerated(null);
     setLoading(true);
@@ -27,52 +25,34 @@ export default function AiAssistant({ onInsert, onClose }) {
         data = await generateFromPrompt(prompt);
       } else {
         if (!file) throw new Error('Please select a PDF file.');
-        setProgressMsg('Extracting text from PDF…');
+        if (file.size > 10 * 1024 * 1024) {
+          throw new Error('PDF too large (max 10MB). Use a smaller file or describe manually.');
+        }
+        setProgressMsg('Extracting text… (this may take a moment)');
         data = await generateFromPDF(file);
       }
       setGenerated(data);
     } catch (err) {
       setError(err.message);
-      // If PDF worker fails, we may need to reload? No, just show error.
     } finally {
       setLoading(false);
       setProgressMsg('');
     }
   };
 
-  const handleInsert = () => {
-    if (generated) {
-      onInsert(generated);
-      onClose();
-    }
-  };
-
-  // Stop propagation on modal card click so background doesn't close
+  // إيقاف انتشار الأحداث للأعلى
   const stopPropagation = (e) => e.stopPropagation();
 
   return (
-    <div className="modal is-active">
-      {/* Background click only if not loading */}
-      <div
-        className="modal-background"
-        onClick={loading ? undefined : onClose}
-      ></div>
-
-      {/* Modal card – stop clicks from reaching background */}
-      <div
-        className="modal-card"
-        style={{ width: '90%', maxWidth: '600px' }}
-        onClick={stopPropagation}
-      >
+    <div className="modal is-active" style={{ zIndex: 2000 }}>
+      <div className="modal-background" onClick={loading ? undefined : onClose}></div>
+      <div className="modal-card" style={{ width: '95%', maxWidth: '600px' }} onClick={stopPropagation}>
         <header className="modal-card-head">
           <p className="modal-card-title">AI Assistant</p>
-          {!loading && (
-            <button className="delete" onClick={onClose}></button>
-          )}
+          {!loading && <button className="delete" onClick={onClose}></button>}
         </header>
 
         <section className="modal-card-body">
-          {/* Tabs */}
           <div className="tabs is-boxed">
             <ul>
               <li className={tab === 'describe' ? 'is-active' : ''}>
@@ -87,31 +67,20 @@ export default function AiAssistant({ onInsert, onClose }) {
           {tab === 'describe' && (
             <div className="field">
               <label className="label">Describe the guideline</label>
-              <div className="control">
-                <textarea
-                  className="textarea"
-                  placeholder="E.g., Malaria case management in Sudan, including first-line treatment and severe malaria criteria..."
-                  rows="6"
-                  value={prompt}
-                  onChange={e => setPrompt(e.target.value)}
-                />
-              </div>
+              <textarea className="textarea" rows="6" value={prompt}
+                onChange={e => setPrompt(e.target.value)}
+                placeholder="E.g., Malaria case management in Sudan…" />
             </div>
           )}
 
           {tab === 'pdf' && (
             <div className="field">
-              <label className="label">Upload PDF</label>
+              <label className="label">Upload PDF (max 10MB)</label>
               <div className="file has-name is-fullwidth">
                 <label className="file-label">
-                  <input
-                    className="file-input"
-                    type="file"
-                    accept="application/pdf"
+                  <input className="file-input" type="file" accept="application/pdf"
                     onChange={e => setFile(e.target.files[0])}
-                    // Do not allow form submission
-                    onClick={(e) => e.stopPropagation()}
-                  />
+                    onClick={stopPropagation} />
                   <span className="file-cta">
                     <span className="file-icon"><i className="fas fa-upload"></i></span>
                     <span className="file-label">Choose file…</span>
@@ -119,19 +88,15 @@ export default function AiAssistant({ onInsert, onClose }) {
                   {file && <span className="file-name">{file.name}</span>}
                 </label>
               </div>
-              <p className="help">Large PDFs are processed in chunks automatically.</p>
+              <p className="help">For large files, use the Describe tab instead.</p>
             </div>
           )}
 
           {progressMsg && <div className="notification is-info is-light mt-3">{progressMsg}</div>}
           {error && <div className="notification is-danger mt-3">{error}</div>}
 
-          <button
-            type="button"
-            className={`button is-primary is-fullwidth mt-3 ${loading ? 'is-loading' : ''}`}
-            onClick={handleGenerate}
-            disabled={loading}
-          >
+          <button type="button" className={`button is-primary is-fullwidth mt-3 ${loading ? 'is-loading' : ''}`}
+            onClick={handleGenerate} disabled={loading}>
             Generate
           </button>
 
@@ -144,18 +109,12 @@ export default function AiAssistant({ onInsert, onClose }) {
                   <p className="is-size-7">{sec.content.substring(0, 200)}...</p>
                 </div>
               ))}
-              <button type="button" className="button is-success" onClick={handleInsert}>
+              <button type="button" className="button is-success" onClick={() => { onInsert(generated); onClose(); }}>
                 Insert into Editor
               </button>
             </div>
           )}
         </section>
-
-        <footer className="modal-card-foot">
-          <button type="button" className="button" onClick={onClose}>
-            Close
-          </button>
-        </footer>
       </div>
     </div>
   );

@@ -7,12 +7,12 @@ import { formatSectionContent, suggestCDSSRules } from '../../services/aiService
 import { createRule } from '../../services/cdssService';
 
 const SECTION_TYPES = ['overview', 'diagnosis', 'management', 'complications', 'red_flags', 'dosing', 'references'];
-const emptySection = () => ({ section_type: 'overview', title: '', content: '' });
+const emptySection = () => ({ section_type: 'custom', title: '', content: '' });
 
 export default function GuidelineForm({ categories, initialData, onSave, onCancel, guidelineId }) {
   const safeSections = initialData?.sections?.length
     ? initialData.sections.map(s => ({
-        section_type: s.section_type || 'overview',
+        section_type: s.section_type || 'custom',
         title: s.title || '',
         content: s.content || '',
       }))
@@ -29,6 +29,7 @@ export default function GuidelineForm({ categories, initialData, onSave, onCance
   const [suggestedRules, setSuggestedRules] = useState([]);
   const [selectedRules, setSelectedRules] = useState({});
 
+  // ──────────── Handlers (unchanged) ────────────
   const addSection = () => setSections([...sections, emptySection()]);
   const removeSection = (idx) => {
     if (sections.length <= 1) return;
@@ -50,22 +51,19 @@ export default function GuidelineForm({ categories, initialData, onSave, onCance
     updated[idx].content = (updated[idx].content || '') + '\n' + text;
     setSections(updated);
   };
-
   const handleSubmit = (e) => {
     e.preventDefault();
     onSave({ title, category_id: categoryId, status, sections });
   };
-
   const handleAiInsert = (data) => {
     if (data.title) setTitle(data.title);
     const newSections = data.sections.map(s => ({
-      section_type: s.section_type || 'overview',
+      section_type: s.section_type || 'custom',
       title: s.title || '',
       content: s.content || '',
     }));
     setSections(newSections);
   };
-
   const handleFormatSection = async (idx) => {
     const sec = sections[idx];
     if (!sec.content.trim()) return;
@@ -79,25 +77,21 @@ export default function GuidelineForm({ categories, initialData, onSave, onCance
       setFormattingIdx(null);
     }
   };
-
-  // AI Rule Suggestion
   const handleSuggestRules = async () => {
     setSuggestingRules(true);
     try {
       const rules = await suggestCDSSRules(sections);
       setSuggestedRules(rules);
-      setSelectedRules({}); // reset selection
+      setSelectedRules({});
     } catch (err) {
       alert('Rule suggestion failed: ' + err.message);
     } finally {
       setSuggestingRules(false);
     }
   };
-
   const toggleRuleSelection = (idx) => {
     setSelectedRules(prev => ({ ...prev, [idx]: !prev[idx] }));
   };
-
   const importSelectedRules = async () => {
     if (!guidelineId) {
       alert('Save the guideline first to assign an ID before importing rules.');
@@ -116,164 +110,182 @@ export default function GuidelineForm({ categories, initialData, onSave, onCance
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      {/* Title, Category, Status */}
-      <div className="field">
-        <label className="label">Title</label>
-        <div className="control">
-          <input className="input" required value={title} onChange={e => setTitle(e.target.value)} />
-        </div>
-      </div>
-
-      <div className="columns">
-        <div className="column">
-          <div className="field">
-            <label className="label">Category</label>
-            <div className="control">
-              <div className="select is-fullwidth">
-                <select value={categoryId} onChange={e => setCategoryId(e.target.value)} required>
-                  <option value="">Select category</option>
-                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="column">
-          <div className="field">
-            <label className="label">Status</label>
-            <div className="control">
-              <div className="select is-fullwidth">
-                <select value={status} onChange={e => setStatus(e.target.value)}>
-                  <option value="draft">Draft</option>
-                  <option value="published">Published</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* AI Assist & CDSS buttons */}
-      <div className="buttons">
-        <button type="button" className="button is-info is-outlined" onClick={() => setShowAI(true)}>
-          <span className="icon"><i className="fas fa-robot"></i></span>
-          <span>AI Assist</span>
-        </button>
-        {guidelineId && (
-          <button type="button" className="button is-warning is-outlined" onClick={() => setShowCDSS(true)}>
-            <span className="icon"><i className="fas fa-microchip"></i></span>
-            <span>CDSS Rules</span>
-          </button>
-        )}
-        {sections.length > 0 && (
-          <button
-            type="button"
-            className={`button is-success is-outlined ${suggestingRules ? 'is-loading' : ''}`}
-            onClick={handleSuggestRules}
-            disabled={suggestingRules}
-          >
-            <span className="icon"><i className="fas fa-lightbulb"></i></span>
-            <span>Suggest Rules</span>
-          </button>
-        )}
-      </div>
-
-      <hr />
-      <div className="level">
-        <div className="level-left">
-          <h4 className="title is-5 mb-2">Content Sections</h4>
-        </div>
-        <div className="level-right">
-          <button type="button" className="button is-primary is-small" onClick={addSection}>
-            <span className="icon"><i className="fas fa-plus"></i></span>
-            <span>Add Section</span>
-          </button>
-        </div>
-      </div>
-
-      {sections.map((sec, idx) => (
-        <div key={idx} className="box mb-4">
-          <div className="level mb-2">
-            <div className="level-left">
-              <div className="field is-horizontal mb-0">
-                <div className="field-label is-normal">
-                  <label className="label">Type</label>
+    <>
+      {/* ========== PARENT MODAL (Guideline) ========== */}
+      <div className={`modal ${showAI ? '' : 'is-active'}`} style={{ display: showAI ? 'none' : undefined }}>
+        <div className="modal-background" onClick={onCancel}></div>
+        <div className="modal-card" style={{ width: '95%', maxWidth: '900px' }}>
+          <header className="modal-card-head">
+            <p className="modal-card-title">{initialData ? 'Edit Guideline' : 'New Guideline'}</p>
+            <button className="delete" onClick={onCancel}></button>
+          </header>
+          <section className="modal-card-body">
+            <form onSubmit={handleSubmit}>
+              {/* ... all form fields (title, category, status, sections, buttons) unchanged ... */}
+              {/* For brevity, we'll keep the same form content as before. We'll just note that the form is identical to previous version. */}
+              {/* Since the form is long, we'll use the previous complete form from the last full GuidelineForm output, but we must ensure the AI button toggles showAI. */}
+              {/* I'll copy the form contents from the last known good version (the one with the AI button). */}
+              
+              <div className="field">
+                <label className="label">Title</label>
+                <div className="control">
+                  <input className="input" required value={title} onChange={e => setTitle(e.target.value)} />
                 </div>
-                <div className="field-body">
+              </div>
+
+              <div className="columns">
+                <div className="column">
                   <div className="field">
+                    <label className="label">Category</label>
                     <div className="control">
-                      <div className="select">
-                        <select value={sec.section_type} onChange={e => updateSection(idx, 'section_type', e.target.value)}>
-                          {SECTION_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                          <option value="custom">custom</option>
+                      <div className="select is-fullwidth">
+                        <select value={categoryId} onChange={e => setCategoryId(e.target.value)} required>
+                          <option value="">Select category</option>
+                          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="column">
+                  <div className="field">
+                    <label className="label">Status</label>
+                    <div className="control">
+                      <div className="select is-fullwidth">
+                        <select value={status} onChange={e => setStatus(e.target.value)}>
+                          <option value="draft">Draft</option>
+                          <option value="published">Published</option>
                         </select>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-            <div className="level-right">
+
               <div className="buttons">
-                <button type="button" className={`button is-small is-warning ${formattingIdx === idx ? 'is-loading' : ''}`}
-                  title="AI format this section" onClick={() => handleFormatSection(idx)} disabled={formattingIdx === idx || !sec.content.trim()}>
-                  <span className="icon"><i className="fas fa-magic"></i></span>
-                  <span>AI Format</span>
+                <button type="button" className="button is-info is-outlined" onClick={() => setShowAI(true)}>
+                  <span className="icon"><i className="fas fa-robot"></i></span>
+                  <span>AI Assist</span>
                 </button>
-                <button type="button" className="button is-small" onClick={() => moveSection(idx, -1)} disabled={idx === 0}>
-                  <span className="icon"><i className="fas fa-arrow-up"></i></span>
-                </button>
-                <button type="button" className="button is-small" onClick={() => moveSection(idx, 1)} disabled={idx === sections.length - 1}>
-                  <span className="icon"><i className="fas fa-arrow-down"></i></span>
-                </button>
-                <button type="button" className="button is-small is-danger" onClick={() => removeSection(idx)} disabled={sections.length <= 1}>
-                  <span className="icon"><i className="fas fa-trash"></i></span>
-                </button>
+                {guidelineId && (
+                  <button type="button" className="button is-warning is-outlined" onClick={() => setShowCDSS(true)}>
+                    <span className="icon"><i className="fas fa-microchip"></i></span>
+                    <span>CDSS Rules</span>
+                  </button>
+                )}
+                {sections.length > 0 && (
+                  <button type="button" className={`button is-success is-outlined ${suggestingRules ? 'is-loading' : ''}`}
+                    onClick={handleSuggestRules} disabled={suggestingRules}>
+                    <span className="icon"><i className="fas fa-lightbulb"></i></span>
+                    <span>Suggest Rules</span>
+                  </button>
+                )}
               </div>
-            </div>
-          </div>
 
-          <div className="field">
-            <label className="label">Section Title (optional)</label>
-            <div className="control">
-              <input className="input" placeholder="e.g. Overview, First-line Treatment" value={sec.title}
-                onChange={e => updateSection(idx, 'title', e.target.value)} />
-            </div>
-          </div>
+              <hr />
+              <div className="level">
+                <div className="level-left">
+                  <h4 className="title is-5 mb-2">Content Sections</h4>
+                </div>
+                <div className="level-right">
+                  <button type="button" className="button is-primary is-small" onClick={addSection}>
+                    <span className="icon"><i className="fas fa-plus"></i></span>
+                    <span>Add Section</span>
+                  </button>
+                </div>
+              </div>
 
-          <div className="field">
-            <label className="label">Content (Markdown)</label>
-            <div className="control">
-              <MDEditor value={sec.content} onChange={value => updateSection(idx, 'content', value || '')} height={300} />
-            </div>
-          </div>
+              {sections.map((sec, idx) => (
+                <div key={idx} className="box mb-4">
+                  <div className="level mb-2">
+                    <div className="level-left">
+                      <div className="field is-horizontal mb-0">
+                        <div className="field-label is-normal">
+                          <label className="label">Type</label>
+                        </div>
+                        <div className="field-body">
+                          <div className="field">
+                            <div className="control">
+                              <div className="select">
+                                <select value={sec.section_type} onChange={e => updateSection(idx, 'section_type', e.target.value)}>
+                                  {SECTION_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                                  <option value="custom">custom</option>
+                                </select>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="level-right">
+                      <div className="buttons">
+                        <button type="button" className={`button is-small is-warning ${formattingIdx === idx ? 'is-loading' : ''}`}
+                          onClick={() => handleFormatSection(idx)} disabled={formattingIdx === idx || !sec.content.trim()}>
+                          <span className="icon"><i className="fas fa-magic"></i></span>
+                          <span>AI Format</span>
+                        </button>
+                        <button type="button" className="button is-small" onClick={() => moveSection(idx, -1)} disabled={idx === 0}>
+                          <span className="icon"><i className="fas fa-arrow-up"></i></span>
+                        </button>
+                        <button type="button" className="button is-small" onClick={() => moveSection(idx, 1)} disabled={idx === sections.length - 1}>
+                          <span className="icon"><i className="fas fa-arrow-down"></i></span>
+                        </button>
+                        <button type="button" className="button is-small is-danger" onClick={() => removeSection(idx)} disabled={sections.length <= 1}>
+                          <span className="icon"><i className="fas fa-trash"></i></span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
 
-          <ImageUploader onInsert={(markdown) => insertAtEnd(idx, markdown)} guidelineId={guidelineId} />
-        </div>
-      ))}
+                  <div className="field">
+                    <label className="label">Section Title (optional)</label>
+                    <div className="control">
+                      <input className="input" placeholder="e.g. Overview, First-line Treatment" value={sec.title}
+                        onChange={e => updateSection(idx, 'title', e.target.value)} />
+                    </div>
+                  </div>
 
-      <div className="field is-grouped mt-4">
-        <div className="control">
-          <button type="submit" className="button is-success">
-            <span className="icon"><i className="fas fa-save"></i></span>
-            <span>Save Guideline</span>
-          </button>
-        </div>
-        <div className="control">
-          <button type="button" className="button" onClick={onCancel}>Cancel</button>
+                  <div className="field">
+                    <label className="label">Content (Markdown)</label>
+                    <div className="control">
+                      <MDEditor value={sec.content} onChange={value => updateSection(idx, 'content', value || '')} height={300} />
+                    </div>
+                  </div>
+
+                  <ImageUploader onInsert={(markdown) => insertAtEnd(idx, markdown)} guidelineId={guidelineId} />
+                </div>
+              ))}
+
+              <div className="field is-grouped mt-4">
+                <div className="control">
+                  <button type="submit" className="button is-success">
+                    <span className="icon"><i className="fas fa-save"></i></span>
+                    <span>Save Guideline</span>
+                  </button>
+                </div>
+                <div className="control">
+                  <button type="button" className="button" onClick={onCancel}>Cancel</button>
+                </div>
+              </div>
+            </form>
+          </section>
         </div>
       </div>
 
-      {/* AI Assistant Modal */}
-      {showAI && <AiAssistant onInsert={handleAiInsert} onClose={() => setShowAI(false)} />}
+      {/* ========== AI ASSISTANT MODAL (separate, not nested) ========== */}
+      {showAI && (
+        <AiAssistant
+          onInsert={handleAiInsert}
+          onClose={() => setShowAI(false)}
+        />
+      )}
 
-      {/* CDSS Manager Modal */}
+      {/* ========== CDSS MANAGER MODAL ========== */}
       {showCDSS && <CDSSManager guidelineId={guidelineId} onClose={() => setShowCDSS(false)} />}
 
-      {/* Suggested Rules Import Modal */}
+      {/* ========== SUGGESTED RULES IMPORT MODAL ========== */}
       {suggestedRules.length > 0 && (
-        <div className="modal is-active">
+        <div className="modal is-active" style={{ zIndex: 1050 }}>
           <div className="modal-background" onClick={() => setSuggestedRules([])}></div>
           <div className="modal-card" style={{ width: '90%', maxWidth: '600px' }}>
             <header className="modal-card-head">
@@ -298,6 +310,6 @@ export default function GuidelineForm({ categories, initialData, onSave, onCance
           </div>
         </div>
       )}
-    </form>
+    </>
   );
 }
